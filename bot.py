@@ -184,7 +184,158 @@ async def painel(ctx):
 async def on_ready():
     print(f"🪖 Bot Militar Online: {bot.user}")
 
-# ================= INICIAR BOT =================
+# ================= Logs =================
 
-TOKEN = os.environ["TOKEN"]
+from datetime import datetime
+import discord
+
+LOG_CHANNEL_NAME = "【🔧】evento"
+
+def get_event_channel(guild):
+    return discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+
+def log_event(guild, title, description, color):
+    channel = get_event_channel(guild)
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+        timestamp=datetime.utcnow()
+    )
+    return channel.send(embed=embed)
+
+# ================= MENSAGENS =================
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    await log_event(
+        message.guild,
+        "📝 Mensagem enviada",
+        f"👤 {message.author}\n"
+        f"📍 {message.channel.mention}\n"
+        f"💬 ```{message.content}```",
+        discord.Color.blue()
+    )
+
+    await bot.process_commands(message)
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or before.content == after.content:
+        return
+
+    await log_event(
+        before.guild,
+        "✏️ Mensagem editada",
+        f"👤 {before.author}\n"
+        f"📍 {before.channel.mention}\n"
+        f"🟥 Antes:\n```{before.content}```\n"
+        f"🟩 Depois:\n```{after.content}```",
+        discord.Color.orange()
+    )
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot:
+        return
+
+    await log_event(
+        message.guild,
+        "🗑️ Mensagem apagada",
+        f"👤 {message.author}\n"
+        f"📍 {message.channel.mention}\n"
+        f"💬 ```{message.content}```",
+        discord.Color.red()
+    )
+
+# ================= COMANDOS =================
+@bot.event
+async def on_command(ctx):
+    await log_event(
+        ctx.guild,
+        "🤖 Comando executado",
+        f"👤 {ctx.author}\n"
+        f"📍 {ctx.channel.mention}\n"
+        f"⌨️ ```{ctx.message.content}```",
+        discord.Color.purple()
+    )
+
+# ================= VOZ =================
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if before.channel == after.channel:
+        return
+
+    if before.channel is None and after.channel:
+        msg = f"🎧 Entrou na call\n👤 {member}\n🔊 {after.channel.name}"
+    elif before.channel and after.channel is None:
+        msg = f"🚪 Saiu da call\n👤 {member}\n🔊 {before.channel.name}"
+    else:
+        msg = f"🔁 Mudou de call\n👤 {member}\n➡️ {before.channel.name} → {after.channel.name}"
+
+    await log_event(
+        member.guild,
+        "🎙️ Atualização de voz",
+        msg,
+        discord.Color.green()
+    )
+
+# ================= CARGOS =================
+@bot.event
+async def on_member_update(before, after):
+    added = set(after.roles) - set(before.roles)
+    removed = set(before.roles) - set(after.roles)
+
+    for role in added:
+        await log_event(
+            after.guild,
+            "➕ Cargo adicionado",
+            f"👤 {after}\n🏷️ {role.name}",
+            discord.Color.green()
+        )
+
+    for role in removed:
+        await log_event(
+            after.guild,
+            "➖ Cargo removido",
+            f"👤 {after}\n🏷️ {role.name}",
+            discord.Color.red()
+        )
+
+# ================= SERVIDOR =================
+@bot.event
+async def on_member_join(member):
+    await log_event(
+        member.guild,
+        "👤 Entrou no servidor",
+        f"{member}",
+        discord.Color.green()
+    )
+
+@bot.event
+async def on_member_remove(member):
+    await log_event(
+        member.guild,
+        "🚪 Saiu do servidor",
+        f"{member}",
+        discord.Color.red()
+    )
+
+@bot.event
+async def on_member_ban(guild, user):
+    await log_event(
+        guild,
+        "🔨 Usuário banido",
+        f"{user}",
+        discord.Color.dark_red()
+)
+
+# ================= INICIAL BOT =================    
+    
+    TOKEN = os.environ["TOKEN"]
 bot.run(TOKEN)
