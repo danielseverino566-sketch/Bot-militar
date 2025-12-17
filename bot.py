@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord.ui import View, Modal, TextInput, Select
+from datetime import datetime
 import os
 
 # ================= CONFIG =================
@@ -8,12 +9,37 @@ import os
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
+intents.members = True
+intents.voice_states = True
+intents.messages = True
+intents.bans = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 CARGOS_AUTORIZADOS = [1285060678817943553]
+LOG_CHANNEL_NAME = "【🔧】evento"
 
-# ================= DADOS POR USUÁRIO =================
+# ================= UTIL LOG =================
+
+def get_event_channel(guild):
+    return discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+
+async def log_event(guild, title, description, color):
+    if not guild:
+        return
+    channel = get_event_channel(guild)
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        title=title,
+        description=description[:4000],
+        color=color,
+        timestamp=datetime.utcnow()
+    )
+    await channel.send(embed=embed)
+
+# ================= DADOS =================
 
 dados = {}
 
@@ -31,35 +57,31 @@ def get_dados(uid):
 
 # ================= MODALS =================
 
-class TituloModal(Modal, title="📌 TÍTULO DO COMUNICADO"):
+class TituloModal(Modal, title="📌 TÍTULO"):
     titulo = TextInput(label="Título", max_length=256)
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         get_dados(interaction.user.id)["titulo"] = self.titulo.value
         await interaction.response.send_message("✔️ Título definido.", ephemeral=True)
 
-class MensagemModal(Modal, title="📝 TEXTO DO COMUNICADO"):
+class MensagemModal(Modal, title="📝 MENSAGEM"):
     mensagem = TextInput(label="Mensagem", style=discord.TextStyle.paragraph)
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         get_dados(interaction.user.id)["mensagem"] = self.mensagem.value
         await interaction.response.send_message("✔️ Mensagem definida.", ephemeral=True)
 
-class ImagemModal(Modal, title="🖼️ IMAGEM (Opcional)"):
+class ImagemModal(Modal, title="🖼️ IMAGEM"):
     imagem = TextInput(label="URL da imagem", required=False)
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         get_dados(interaction.user.id)["imagem"] = self.imagem.value or None
         await interaction.response.send_message("✔️ Imagem definida.", ephemeral=True)
 
-class MarcacaoModal(Modal, title="🎖️ MARCAÇÃO (Opcional)"):
-    marcacao = TextInput(
-        label="Digite a marcação",
-        placeholder="Ex: @militares ou @everyone",
-        required=False
-    )
+class MarcacaoModal(Modal, title="🎖️ MARCAÇÃO"):
+    marcacao = TextInput(label="Marcação", required=False)
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         get_dados(interaction.user.id)["marcacao"] = self.marcacao.value or None
         await interaction.response.send_message("✔️ Marcação definida.", ephemeral=True)
 
@@ -71,13 +93,13 @@ class CanalSelect(Select):
             discord.SelectOption(label=f"#{c.name}", value=str(c.id))
             for c in guild.text_channels[:25]
         ]
-        super().__init__(placeholder="📍 CANAL DE ENVIO", options=options)
+        super().__init__(placeholder="📍 CANAL", options=options)
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction):
         get_dados(interaction.user.id)["canal"] = int(self.values[0])
         await interaction.response.send_message("📍 Canal selecionado.", ephemeral=True)
 
-# ================= PAINEL =================
+# ================= VIEW =================
 
 class PainelMilitar(View):
     def __init__(self, autor_id, guild):
@@ -86,7 +108,7 @@ class PainelMilitar(View):
         self.guild = guild
         self.add_item(CanalSelect(guild))
 
-    async def interaction_check(self, interaction: discord.Interaction):
+    async def interaction_check(self, interaction):
         return interaction.user.id == self.autor_id
 
     @discord.ui.button(label="✏️ TÍTULO", style=discord.ButtonStyle.primary)
@@ -105,63 +127,38 @@ class PainelMilitar(View):
     async def imagem(self, interaction, _):
         await interaction.response.send_modal(ImagemModal())
 
-    @discord.ui.button(label="🟢 INFORMATIVO", style=discord.ButtonStyle.success, row=1)
-    async def verde(self, interaction, _):
-        get_dados(interaction.user.id)["cor"] = discord.Color.dark_green()
-        await interaction.response.send_message("🟢 Cor definida.", ephemeral=True)
-
-    @discord.ui.button(label="🔵 DIRETRIZ", style=discord.ButtonStyle.primary, row=1)
-    async def azul(self, interaction, _):
-        get_dados(interaction.user.id)["cor"] = discord.Color.dark_blue()
-        await interaction.response.send_message("🔵 Cor definida.", ephemeral=True)
-
-    @discord.ui.button(label="🔴 ALERTA", style=discord.ButtonStyle.danger, row=1)
-    async def vermelho(self, interaction, _):
-        get_dados(interaction.user.id)["cor"] = discord.Color.dark_red()
-        await interaction.response.send_message("🔴 Cor definida.", ephemeral=True)
-
-    @discord.ui.button(label="👁️ PRÉ-VISUALIZAR", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="👁️ PRÉ-VISUALIZAR", style=discord.ButtonStyle.secondary, row=1)
     async def preview(self, interaction, _):
         info = get_dados(interaction.user.id)
         embed = discord.Embed(
-            title=f"📢 {info['titulo']}",
+            title=info["titulo"],
             description=info["mensagem"],
             color=info["cor"]
         )
         if info["imagem"]:
             embed.set_image(url=info["imagem"])
 
-        await interaction.response.send_message(
-            "📄 **PRÉ-VISUALIZAÇÃO**",
-            embed=embed,
-            ephemeral=True
-        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="📤 ENVIAR COMUNICADO", style=discord.ButtonStyle.danger, row=2)
+    @discord.ui.button(label="📤 ENVIAR", style=discord.ButtonStyle.danger, row=1)
     async def enviar(self, interaction, _):
         info = get_dados(interaction.user.id)
-
-        if not info["canal"]:
-            await interaction.response.send_message("❌ Selecione um canal.", ephemeral=True)
-            return
-
         canal = self.guild.get_channel(info["canal"])
         if not canal:
             await interaction.response.send_message("❌ Canal inválido.", ephemeral=True)
             return
 
         embed = discord.Embed(
-            title=f"📢 {info['titulo']}",
+            title=info["titulo"],
             description=info["mensagem"],
             color=info["cor"]
         )
-        embed.set_footer(text=f"Ordem emitida por {interaction.user} • Sistema Militar")
+        embed.set_footer(text=f"Ordem emitida por {interaction.user}")
 
         if info["imagem"]:
             embed.set_image(url=info["imagem"])
 
-        await canal.send(embed=embed)
-
+        await canal.send(content=info["marcacao"], embed=embed)
         dados.pop(interaction.user.id, None)
         await interaction.response.send_message("✅ Comunicado enviado.", ephemeral=True)
 
@@ -169,73 +166,38 @@ class PainelMilitar(View):
 
 @bot.command()
 async def painel(ctx):
-    if not any(role.id in CARGOS_AUTORIZADOS for role in ctx.author.roles):
-        await ctx.send("⛔ **ACESSO NEGADO**\nPainel restrito ao Alto Comando.")
+    if not any(r.id in CARGOS_AUTORIZADOS for r in ctx.author.roles):
+        await ctx.send("⛔ Acesso negado.")
         return
 
-    await ctx.send(
-        "🎛️ **PAINEL MILITAR DE COMUNICAÇÕES OFICIAIS**",
-        view=PainelMilitar(ctx.author.id, ctx.guild)
-    )
+    await ctx.send("🎛️ PAINEL MILITAR", view=PainelMilitar(ctx.author.id, ctx.guild))
 
-# ================= EVENTO =================
+# ================= LOGS =================
 
-@bot.event
-async def on_ready():
-    print(f"🪖 Bot Militar Online: {bot.user}")
-
-# ================= Logs =================
-
-from datetime import datetime
-import discord
-
-LOG_CHANNEL_NAME = "【🔧】evento"
-
-def get_event_channel(guild):
-    return discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-
-def log_event(guild, title, description, color):
-    channel = get_event_channel(guild)
-    if not channel:
-        return
-
-    embed = discord.Embed(
-        title=title,
-        description=description,
-        color=color,
-        timestamp=datetime.utcnow()
-    )
-    return channel.send(embed=embed)
-
-# ================= MENSAGENS =================
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
+    content = message.content[:1800] if message.content else "Mensagem vazia"
+
     await log_event(
         message.guild,
         "📝 Mensagem enviada",
-        f"👤 {message.author}\n"
-        f"📍 {message.channel.mention}\n"
-        f"💬 ```{message.content}```",
+        f"👤 {message.author}\n📍 {message.channel.mention}\n```{content}```",
         discord.Color.blue()
     )
-
     await bot.process_commands(message)
 
 @bot.event
 async def on_message_edit(before, after):
-    if before.author.bot or before.content == after.content:
+    if before.author.bot:
         return
 
     await log_event(
         before.guild,
         "✏️ Mensagem editada",
-        f"👤 {before.author}\n"
-        f"📍 {before.channel.mention}\n"
-        f"🟥 Antes:\n```{before.content}```\n"
-        f"🟩 Depois:\n```{after.content}```",
+        f"👤 {before.author}\n```{before.content}```\n➡️\n```{after.content}```",
         discord.Color.orange()
     )
 
@@ -247,95 +209,40 @@ async def on_message_delete(message):
     await log_event(
         message.guild,
         "🗑️ Mensagem apagada",
-        f"👤 {message.author}\n"
-        f"📍 {message.channel.mention}\n"
-        f"💬 ```{message.content}```",
+        f"👤 {message.author}\n```{message.content}```",
         discord.Color.red()
     )
 
-# ================= COMANDOS =================
-@bot.event
-async def on_command(ctx):
-    await log_event(
-        ctx.guild,
-        "🤖 Comando executado",
-        f"👤 {ctx.author}\n"
-        f"📍 {ctx.channel.mention}\n"
-        f"⌨️ ```{ctx.message.content}```",
-        discord.Color.purple()
-    )
-
-# ================= VOZ =================
 @bot.event
 async def on_voice_state_update(member, before, after):
-    if before.channel == after.channel:
-        return
-
-    if before.channel is None and after.channel:
-        msg = f"🎧 Entrou na call\n👤 {member}\n🔊 {after.channel.name}"
-    elif before.channel and after.channel is None:
-        msg = f"🚪 Saiu da call\n👤 {member}\n🔊 {before.channel.name}"
-    else:
-        msg = f"🔁 Mudou de call\n👤 {member}\n➡️ {before.channel.name} → {after.channel.name}"
-
-    await log_event(
-        member.guild,
-        "🎙️ Atualização de voz",
-        msg,
-        discord.Color.green()
-    )
-
-# ================= CARGOS =================
-@bot.event
-async def on_member_update(before, after):
-    added = set(after.roles) - set(before.roles)
-    removed = set(before.roles) - set(after.roles)
-
-    for role in added:
+    if before.channel != after.channel:
         await log_event(
-            after.guild,
-            "➕ Cargo adicionado",
-            f"👤 {after}\n🏷️ {role.name}",
+            member.guild,
+            "🎙️ Voz",
+            f"{member}\n{before.channel} ➜ {after.channel}",
             discord.Color.green()
         )
 
-    for role in removed:
-        await log_event(
-            after.guild,
-            "➖ Cargo removido",
-            f"👤 {after}\n🏷️ {role.name}",
-            discord.Color.red()
-        )
+@bot.event
+async def on_member_update(before, after):
+    for role in set(after.roles) - set(before.roles):
+        await log_event(after.guild, "➕ Cargo adicionado", f"{after} → {role}", discord.Color.green())
+    for role in set(before.roles) - set(after.roles):
+        await log_event(after.guild, "➖ Cargo removido", f"{after} → {role}", discord.Color.red())
 
-# ================= SERVIDOR =================
 @bot.event
 async def on_member_join(member):
-    await log_event(
-        member.guild,
-        "👤 Entrou no servidor",
-        f"{member}",
-        discord.Color.green()
-    )
+    await log_event(member.guild, "👤 Entrou no servidor", str(member), discord.Color.green())
 
 @bot.event
 async def on_member_remove(member):
-    await log_event(
-        member.guild,
-        "🚪 Saiu do servidor",
-        f"{member}",
-        discord.Color.red()
-    )
+    await log_event(member.guild, "🚪 Saiu do servidor", str(member), discord.Color.red())
+
+# ================= START =================
 
 @bot.event
-async def on_member_ban(guild, user):
-    await log_event(
-        guild,
-        "🔨 Usuário banido",
-        f"{user}",
-        discord.Color.dark_red()
-)
+async def on_ready():
+    print(f"🪖 Bot online: {bot.user}")
 
-# ================= INICIAL BOT =================    
-    
-    TOKEN = os.environ["TOKEN"]
+TOKEN = os.environ["TOKEN"]
 bot.run(TOKEN)
