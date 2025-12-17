@@ -17,7 +17,7 @@ intents.bans = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 CARGOS_AUTORIZADOS = [1285060678817943553]
-LOG_CHANNEL_NAME = "【🔧】evento"
+LOG_CHANNEL_NAME = "<#1361000767741235331>"
 
 # ================= UTIL LOG =================
 
