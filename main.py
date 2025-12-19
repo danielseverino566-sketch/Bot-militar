@@ -165,11 +165,4 @@ async def painel(ctx):
 async def on_ready():
     print(f"🟢 Bot online: {bot.user}")
 
-import os
-
-TOKEN = os.getenv("TOKEN")
-
-if not TOKEN:
-    raise RuntimeError("TOKEN não encontrado nas variáveis de ambiente")
-
-bot.run(TOKEN)
+bot.run(os.getenv("TOKEN"))
