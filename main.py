@@ -165,4 +165,4 @@ async def painel(ctx):
 async def on_ready():
     print(f"🟢 Bot online: {bot.user}")
 
-bot.run(os.environ["TOKEN!"])
+bot.run(os.environ["TOKEN"])
